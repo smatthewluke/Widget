@@ -1,0 +1,22 @@
+{
+  "name": "plugin_3dm_arcgisexperiencebuilder",
+  "label": "Orbit 3DM Widget",
+  "type": "widget",
+  "version": "24.1.0",
+  "exbVersion": "1.12.0",
+  "author": "Orbit Geospatial Technologies",
+  "description": "A widget that integrates the 3DM Viewer SDK with the Esri ArcGIS Experience Builder.",
+  "copyright": "",
+  "license": "https://orbitgt.com/legal/eula-mla/",
+  "properties": {},
+  "translatedLocales": [
+    "en"
+  ],
+  "defaultSize": {
+    "width": 500,
+    "height": 500
+  },
+  "dependency": [
+    "jimu-arcgis"
+  ]
+}
