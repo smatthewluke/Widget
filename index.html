@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prophantasia Training Tool</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Main Container -->
+    <div id="app-container">
+
+        <!-- Settings Panel -->
+        <div id="settings-panel" class="visible">
+
+            <!-- Header with Start Button -->
+            <div id="header">
+                <h1>Prophantasia Training Tool</h1>
+                <button id="start-training-btn" class="primary-btn">START TRAINING</button>
+            </div>
+
+            <!-- Preview Frame -->
+            <div id="preview-container">
+                <h3>Preview</h3>
+                <div id="preview-frame">
+                    <div id="preview-image-container">
+                        <img id="preview-image" src="" alt="Preview">
+                    </div>
+                    <div id="preview-grid-overlay"></div>
+                </div>
+            </div>
+
+            <!-- Meta Control -->
+            <div class="setting-section">
+                <h2>Meta Control</h2>
+                <div class="setting-row">
+                    <label>Speed Preset:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn" data-meta="fast">FAST</button>
+                        <button class="toggle-btn active" data-meta="med">MED</button>
+                        <button class="toggle-btn" data-meta="slow">SLOW</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Duration Settings -->
+            <div class="setting-section">
+                <h2>Duration Settings</h2>
+
+                <!-- Image Duration -->
+                <div class="setting-row">
+                    <label>Image Duration:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn duration-toggle" data-setting="imageDuration" data-value="30">FAST (30ms)</button>
+                        <button class="toggle-btn duration-toggle active" data-setting="imageDuration" data-value="250">MED (250ms)</button>
+                        <button class="toggle-btn duration-toggle" data-setting="imageDuration" data-value="300">SLOW (300ms)</button>
+                    </div>
+                    <input type="number" id="imageDuration-manual" class="manual-input" min="10" max="10000" step="10" value="250">
+                    <span class="unit">ms</span>
+                </div>
+
+                <!-- Prophantasia Duration -->
+                <div class="setting-row">
+                    <label>Prophantasia Duration:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn duration-toggle" data-setting="prophantasiaDuration" data-value="750">FAST (750ms)</button>
+                        <button class="toggle-btn duration-toggle active" data-setting="prophantasiaDuration" data-value="2750">MED (2750ms)</button>
+                        <button class="toggle-btn duration-toggle" data-setting="prophantasiaDuration" data-value="4000">SLOW (4000ms)</button>
+                    </div>
+                    <input type="number" id="prophantasiaDuration-manual" class="manual-input" min="100" max="20000" step="50" value="2750">
+                    <span class="unit">ms</span>
+                </div>
+            </div>
+
+            <!-- Media Frame Settings -->
+            <div class="setting-section">
+                <h2>Media Frame Settings</h2>
+
+                <!-- Frame Shape -->
+                <div class="setting-row">
+                    <label>Frame Shape:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn frame-toggle active" data-setting="frameShape" data-value="square">SQUARE</button>
+                        <button class="toggle-btn frame-toggle" data-setting="frameShape" data-value="rectangle">RECTANGLE</button>
+                    </div>
+                </div>
+
+                <!-- Background Color -->
+                <div class="setting-row">
+                    <label>Background Color:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn bg-toggle active" data-setting="backgroundColor" data-value="black">BLACK</button>
+                        <button class="toggle-btn bg-toggle" data-setting="backgroundColor" data-value="white">WHITE</button>
+                        <button class="toggle-btn bg-toggle" data-setting="backgroundColor" data-value="pink">PINK</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Grid Overlay Settings -->
+            <div class="setting-section">
+                <h2>Grid Overlay Settings</h2>
+
+                <!-- Grid Size -->
+                <div class="setting-row">
+                    <label>Grid Size:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn grid-size-toggle" data-setting="gridSize" data-value="3">LARGE (3x3)</button>
+                        <button class="toggle-btn grid-size-toggle active" data-setting="gridSize" data-value="4">MED (4x4)</button>
+                        <button class="toggle-btn grid-size-toggle" data-setting="gridSize" data-value="5">SMALL (5x5)</button>
+                    </div>
+                </div>
+
+                <!-- Grid Line Thickness -->
+                <div class="setting-row">
+                    <label>Grid Line Thickness:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn grid-thickness-toggle" data-setting="gridThickness" data-value="1">THIN (1px)</button>
+                        <button class="toggle-btn grid-thickness-toggle active" data-setting="gridThickness" data-value="2">MED (2px)</button>
+                        <button class="toggle-btn grid-thickness-toggle" data-setting="gridThickness" data-value="4">LARGE (4px)</button>
+                    </div>
+                    <input type="number" id="gridThickness-manual" class="manual-input" min="1" max="20" step="1" value="2">
+                    <span class="unit">px</span>
+                </div>
+
+                <!-- Grid Line Opacity -->
+                <div class="setting-row">
+                    <label>Grid Line Opacity:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn grid-opacity-toggle" data-setting="gridOpacity" data-value="30">LOW (30%)</button>
+                        <button class="toggle-btn grid-opacity-toggle active" data-setting="gridOpacity" data-value="50">MED (50%)</button>
+                        <button class="toggle-btn grid-opacity-toggle" data-setting="gridOpacity" data-value="80">HIGH (80%)</button>
+                    </div>
+                    <input type="number" id="gridOpacity-manual" class="manual-input" min="0" max="100" step="5" value="50">
+                    <span class="unit">%</span>
+                </div>
+
+                <!-- Grid Line Color -->
+                <div class="setting-row">
+                    <label>Grid Line Color:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn grid-color-toggle" data-setting="gridColor" data-value="pink">PINK</button>
+                        <button class="toggle-btn grid-color-toggle active" data-setting="gridColor" data-value="white">WHITE</button>
+                        <button class="toggle-btn grid-color-toggle" data-setting="gridColor" data-value="black">BLACK</button>
+                    </div>
+                </div>
+
+                <!-- Enable/Disable Grid -->
+                <div class="setting-row">
+                    <label>Show Grid:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn grid-enabled-toggle" data-setting="gridEnabled" data-value="true">ON</button>
+                        <button class="toggle-btn grid-enabled-toggle active" data-setting="gridEnabled" data-value="false">OFF</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sound Settings -->
+            <div class="setting-section">
+                <h2>Sound Settings</h2>
+
+                <!-- Speak Filename -->
+                <div class="setting-row">
+                    <label>Speak Filename:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn speak-toggle" data-setting="speakFilename" data-value="true">ON</button>
+                        <button class="toggle-btn speak-toggle active" data-setting="speakFilename" data-value="false">OFF</button>
+                    </div>
+                </div>
+
+                <!-- Beep On -->
+                <div class="setting-row">
+                    <label>Beep On:</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn beep-toggle active" data-setting="beepOn" data-value="none">NONE</button>
+                        <button class="toggle-btn beep-toggle" data-setting="beepOn" data-value="seconds">SECONDS</button>
+                        <button class="toggle-btn beep-toggle" data-setting="beepOn" data-value="thirds">THIRDS</button>
+                        <button class="toggle-btn beep-toggle" data-setting="beepOn" data-value="fourths">FOURTHS</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Media Selection -->
+            <div class="setting-section">
+                <h2>Media Selection</h2>
+
+                <div class="setting-row">
+                    <label>Select Images:</label>
+                    <input type="file" id="image-input" accept="image/*" multiple>
+                </div>
+
+                <div id="selected-images-list">
+                    <h3>Selected Images (<span id="image-count">0</span>)</h3>
+                    <div id="image-list-container"></div>
+                </div>
+            </div>
+
+            <!-- Media Sets Management -->
+            <div class="setting-section">
+                <h2>Media Sets</h2>
+
+                <div class="setting-row">
+                    <label>Set Name:</label>
+                    <input type="text" id="set-name-input" placeholder="Enter set name">
+                    <button id="create-set-btn" class="secondary-btn">Create Set</button>
+                </div>
+
+                <div id="media-sets-list">
+                    <h3>Available Sets (<span id="sets-count">0</span>)</h3>
+                    <div id="sets-list-container"></div>
+                </div>
+            </div>
+
+            <!-- Media Batches Management -->
+            <div class="setting-section">
+                <h2>Media Batches</h2>
+
+                <div class="setting-row">
+                    <label>Batch Name:</label>
+                    <input type="text" id="batch-name-input" placeholder="Enter batch name">
+                    <button id="create-batch-btn" class="secondary-btn">Create Batch</button>
+                </div>
+
+                <div class="setting-row">
+                    <label>Add Sets to Batch:</label>
+                    <select id="batch-sets-select" multiple size="5"></select>
+                </div>
+
+                <div id="media-batches-list">
+                    <h3>Available Batches (<span id="batches-count">0</span>)</h3>
+                    <div id="batches-list-container"></div>
+                </div>
+
+                <div class="setting-row">
+                    <label>Active Batch:</label>
+                    <select id="active-batch-select">
+                        <option value="">No batch selected</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- JSON Import/Export -->
+            <div class="setting-section">
+                <h2>Settings Import/Export</h2>
+
+                <div class="setting-row">
+                    <button id="export-json-btn" class="secondary-btn">Export Settings (JSON)</button>
+                    <button id="import-json-btn" class="secondary-btn">Import Settings (JSON)</button>
+                    <input type="file" id="json-import-input" accept=".json" style="display: none;">
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Training Screen (Fullscreen) -->
+        <div id="training-screen" class="hidden">
+            <div id="media-frame">
+                <div id="image-container">
+                    <img id="training-image" src="" alt="Training Image">
+                </div>
+                <div id="grid-overlay"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Audio Context for Beeps -->
+    <audio id="beep-audio" preload="auto">
+        <source src="data:audio/wav;base64,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" type="audio/wav">
+    </audio>
+
+    <script src="script.js"></script>
+</body>
+</html>
