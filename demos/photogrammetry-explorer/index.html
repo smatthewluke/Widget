@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photogrammetry Explorer</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="demo-header">
+            <div class="header-left">
+                <a href="../../index.html" class="back-link">← Gallery</a>
+                <h1>Photogrammetry Explorer</h1>
+            </div>
+            <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+                <span class="theme-icon">🌙</span>
+            </button>
+        </header>
+
+        <!-- Main Content -->
+        <div class="demo-container">
+
+            <!-- Tab Navigation -->
+            <nav class="tab-nav">
+                <button class="tab-btn active" data-tab="explorer">Explorer</button>
+                <button class="tab-btn" data-tab="workflow">Workflow Guide</button>
+            </nav>
+
+            <!-- Tab Content -->
+            <div class="tab-content">
+
+                <!-- Explorer Tab -->
+                <section id="explorer-tab" class="tab-pane active">
+
+                    <!-- Control Panel -->
+                    <aside class="control-panel">
+
+                        <!-- Dataset Selection -->
+                        <div class="control-section">
+                            <h3>Dataset</h3>
+                            <select id="dataset-select" class="select-input">
+                                <option value="rolling-hill-melbourne">Rolling Hill - Melbourne (Synthetic)</option>
+                            </select>
+                        </div>
+
+                        <!-- View Mode -->
+                        <div class="control-section">
+                            <h3>View Mode</h3>
+                            <div class="button-group">
+                                <button class="toggle-btn active" data-mode="points">Points</button>
+                                <button class="toggle-btn" data-mode="mesh">Mesh</button>
+                                <button class="toggle-btn" data-mode="heightmap">Heightmap</button>
+                            </div>
+                        </div>
+
+                        <!-- Display Options -->
+                        <div class="control-section">
+                            <h3>Display Options</h3>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="show-grid" checked>
+                                <span>Show Grid + Scale</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="color-by-elevation" checked>
+                                <span>Color by Elevation</span>
+                            </label>
+                        </div>
+
+                        <!-- Colormap Options -->
+                        <div class="control-section">
+                            <h3>Colormap Type</h3>
+                            <div class="button-group-vertical">
+                                <button class="toggle-btn active" data-colormap="linear">Linear</button>
+                                <button class="toggle-btn" data-colormap="quantile">Quantile</button>
+                                <button class="toggle-btn" data-colormap="zeroed">Zeroed</button>
+                                <button class="toggle-btn" data-colormap="stddev">Std Dev Anomalies</button>
+                            </div>
+                        </div>
+
+                        <!-- Vertical Exaggeration -->
+                        <div class="control-section">
+                            <h3>Vertical Exaggeration</h3>
+                            <div class="slider-container">
+                                <input type="range" id="vertical-exaggeration" min="1" max="5" step="0.1" value="2">
+                                <span class="slider-value" id="vertical-exag-value">2.0x</span>
+                            </div>
+                        </div>
+
+                        <!-- Context Overlay -->
+                        <div class="control-section">
+                            <h3>Real-World Context</h3>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="show-basemap">
+                                <span>Show Basemap</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="show-topography">
+                                <span>Show Topography</span>
+                            </label>
+                            <div class="slider-container">
+                                <label>Context Opacity</label>
+                                <input type="range" id="context-opacity" min="0" max="100" step="5" value="50">
+                                <span class="slider-value" id="context-opacity-value">50%</span>
+                            </div>
+                            <div class="button-group">
+                                <button class="toggle-btn active" data-layer="overlay">Overlay</button>
+                                <button class="toggle-btn" data-layer="underlay">Underlay</button>
+                            </div>
+                        </div>
+
+                        <!-- Point Readout Options -->
+                        <div class="control-section">
+                            <h3>Point Readout</h3>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="show-full-metadata">
+                                <span>Show Full Metadata</span>
+                            </label>
+                        </div>
+
+                        <!-- View Controls -->
+                        <div class="control-section">
+                            <h3>View Controls</h3>
+                            <button class="btn-secondary" id="reset-view">Reset View</button>
+                            <button class="btn-secondary" id="fit-bounds">Fit to Bounds</button>
+                        </div>
+
+                    </aside>
+
+                    <!-- Viewer Area -->
+                    <div class="viewer-container">
+                        <canvas id="viewer-canvas"></canvas>
+
+                        <!-- Point Readout -->
+                        <div id="point-readout" class="point-readout hidden">
+                            <h4>Point Information</h4>
+                            <div id="readout-content"></div>
+                        </div>
+
+                        <!-- Legend -->
+                        <div class="legend-panel">
+                            <h4>Dataset Info</h4>
+                            <div id="legend-content">
+                                <div class="legend-item">
+                                    <span class="legend-label">Area:</span>
+                                    <span class="legend-value" id="area-value">—</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-label">Points:</span>
+                                    <span class="legend-value" id="points-value">—</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-label">Elevation Range:</span>
+                                    <span class="legend-value" id="elevation-value">—</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-label">Coord System:</span>
+                                    <span class="legend-value" id="coord-value">—</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-label">Units:</span>
+                                    <span class="legend-value" id="units-value">—</span>
+                                </div>
+                            </div>
+                            <!-- Elevation color scale -->
+                            <div class="color-scale">
+                                <div class="scale-gradient"></div>
+                                <div class="scale-labels">
+                                    <span id="scale-min">0m</span>
+                                    <span id="scale-max">10m</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </section>
+
+                <!-- Workflow Guide Tab -->
+                <section id="workflow-tab" class="tab-pane">
+                    <div class="workflow-content">
+
+                        <h2>Understanding Photogrammetry</h2>
+
+                        <div class="workflow-section">
+                            <h3>1. What Photogrammetry Produces</h3>
+                            <p>
+                                Photogrammetry transforms overlapping aerial photographs into accurate 3D models and terrain data.
+                                The primary outputs include:
+                            </p>
+                            <ul>
+                                <li><strong>Point Clouds:</strong> Dense collections of 3D points (x, y, z coordinates) representing the surface</li>
+                                <li><strong>Meshes:</strong> Triangulated 3D surfaces connecting the points to create continuous terrain models</li>
+                                <li><strong>Orthomosaics:</strong> Geometrically corrected aerial imagery stitched into a single map</li>
+                                <li><strong>DEM/DTM:</strong> Digital Elevation Models showing terrain height (DTM excludes vegetation/buildings)</li>
+                            </ul>
+                        </div>
+
+                        <div class="workflow-section">
+                            <h3>2. Typical Capture Workflow</h3>
+                            <p>Professional drone-based photogrammetry follows a systematic process:</p>
+                            <ol>
+                                <li><strong>Flight Planning:</strong> Define survey area, altitude, and overlap requirements (typically 70-80% forward, 60% side overlap)</li>
+                                <li><strong>Ground Control Points (GCP):</strong> Place and survey known reference points for accuracy (optional for relative measurements)</li>
+                                <li><strong>Image Capture:</strong> Fly autonomous mission with consistent altitude and overlap</li>
+                                <li><strong>Quality Check:</strong> Verify image coverage and overlap before leaving site</li>
+                            </ol>
+                        </div>
+
+                        <div class="workflow-section">
+                            <h3>3. Processing Pipeline</h3>
+                            <p>Converting images to 3D models involves several computational steps:</p>
+                            <ol>
+                                <li><strong>Feature Matching:</strong> Identify common points across multiple images</li>
+                                <li><strong>Sparse Point Cloud:</strong> Calculate camera positions and initial 3D structure</li>
+                                <li><strong>Dense Point Cloud:</strong> Generate millions of 3D points using multi-view stereo algorithms</li>
+                                <li><strong>Mesh Generation:</strong> Connect points into triangulated surfaces</li>
+                                <li><strong>Texturing:</strong> Apply photographic detail to mesh surfaces</li>
+                                <li><strong>DEM/Orthomosaic:</strong> Generate elevation grids and corrected imagery</li>
+                            </ol>
+                        </div>
+
+                        <div class="workflow-section">
+                            <h3>4. Interpreting This Demo</h3>
+                            <p>This interactive viewer demonstrates typical photogrammetry deliverables:</p>
+                            <ul>
+                                <li><strong>Points Mode:</strong> Raw point cloud data as captured by the photogrammetry process</li>
+                                <li><strong>Mesh Mode:</strong> Triangulated surface model connecting the points</li>
+                                <li><strong>Heightmap Mode:</strong> Elevation-based visualization showing terrain structure</li>
+                                <li><strong>Grid & Scale:</strong> Reference grid showing the real-world 15m x 15m area</li>
+                                <li><strong>Elevation Coloring:</strong> Color-coded visualization of height variations</li>
+                                <li><strong>Context Layers:</strong> Real basemap and topography showing geographic location</li>
+                            </ul>
+                            <p>
+                                Use click/hover to inspect individual points and see their x, y, z coordinates and elevation values.
+                                The vertical exaggeration slider helps visualize subtle terrain features.
+                            </p>
+                        </div>
+
+                        <div class="workflow-section">
+                            <h3>5. About This Dataset</h3>
+                            <p>
+                                The demonstration dataset is <strong>synthetic but realistic</strong>, representing a 15m x 15m section
+                                of Fitzroy Gardens in Melbourne CBD, Victoria. It simulates typical contractor deliverables including:
+                            </p>
+                            <ul>
+                                <li><strong>Terrain Features:</strong> Rolling hill with ~3m elevation variation</li>
+                                <li><strong>Vegetation:</strong> Trees represented as elevated point clusters</li>
+                                <li><strong>Natural Features:</strong> Rocks and ground detail</li>
+                                <li><strong>Coordinate System:</strong> Local coordinate system (typical for small survey areas)</li>
+                                <li><strong>Units:</strong> Meters (standard for metric surveys)</li>
+                                <li><strong>Point Density:</strong> Reduced from real-world data for web performance (~10,000 points vs millions)</li>
+                            </ul>
+                            <p>
+                                Real photogrammetry datasets can contain millions of points and require specialized processing software.
+                                This demo simplifies the data while maintaining the essential structure and metadata patterns you'd
+                                encounter in actual deliverables.
+                            </p>
+                        </div>
+
+                    </div>
+                </section>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script src="js/viewer.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
