@@ -1,54 +1,44 @@
 // Photogrammetry 3D Viewer Engine
+// High-performance canvas-based 3D point cloud and mesh renderer
 
 class Viewer3D {
-    constructor(canvas, options = {}) {
+    constructor(canvas) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
 
-        // Dataset
         this.dataset = null;
         this.points = [];
-        this.triangles = [];
+        this.projectedPoints = [];
 
-        // View settings
-        this.viewMode = 'points'; // points, mesh, heightmap
+        this.viewMode = 'points';
         this.showGrid = true;
         this.colorByElevation = true;
-        this.colormapType = 'linear'; // linear, quantile, zeroed, stddev
+        this.colormapType = 'linear';
         this.verticalExaggeration = 2.0;
         this.showFullMetadata = false;
 
-        // Context layers
         this.showBasemap = false;
         this.showTopography = false;
         this.contextOpacity = 0.5;
-        this.contextLayer = 'overlay'; // overlay or underlay
+        this.contextLayer = 'overlay';
 
-        // Camera
         this.camera = {
-            distance: 25,
-            rotationX: -0.6, // Pitch (rotation around X axis)
-            rotationY: 0,    // Yaw (rotation around Y axis)
-            rotationZ: 0.3,  // Roll (rotation around Z axis)
+            distance: 30,
+            rotationX: -0.5,
+            rotationY: 0.3,
+            rotationZ: 0,
             centerX: 7.5,
             centerY: 7.5,
             centerZ: 1.5
         };
 
-        // Mouse interaction
-        this.mouse = {
-            isDragging: false,
-            lastX: 0,
-            lastY: 0,
-            currentX: 0,
-            currentY: 0
-        };
-
-        // Hover state
+        this.mouse = { isDragging: false, lastX: 0, lastY: 0 };
         this.hoveredPoint = null;
+        this.onHoverChange = null;
 
-        // Color cache for performance
-        this.colorCache = {};
+        this.colorCache = new Map();
+        this.quantileRanks = null;
+        this.stats = null;
 
         this.initCanvas();
         this.initEventListeners();
@@ -61,28 +51,28 @@ class Viewer3D {
 
     resizeCanvas() {
         const rect = this.canvas.parentElement.getBoundingClientRect();
-        this.canvas.width = rect.width;
-        this.canvas.height = rect.height;
+        const dpr = window.devicePixelRatio || 1;
+        this.canvas.width = rect.width * dpr;
+        this.canvas.height = rect.height * dpr;
+        this.canvas.style.width = rect.width + 'px';
+        this.canvas.style.height = rect.height + 'px';
+        this.ctx.scale(dpr, dpr);
+        this.displayWidth = rect.width;
+        this.displayHeight = rect.height;
         this.render();
     }
 
     initEventListeners() {
-        // Mouse events for rotation
-        this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
-        this.canvas.addEventListener('mouseleave', (e) => this.onMouseUp(e));
-
-        // Wheel for zoom
-        this.canvas.addEventListener('wheel', (e) => this.onWheel(e));
-
-        // Touch support for mobile
-        this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e));
-        this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e));
-        this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e));
+        this.canvas.addEventListener('mousedown', e => this.onMouseDown(e));
+        this.canvas.addEventListener('mousemove', e => this.onMouseMove(e));
+        this.canvas.addEventListener('mouseup', () => this.mouse.isDragging = false);
+        this.canvas.addEventListener('mouseleave', () => this.mouse.isDragging = false);
+        this.canvas.addEventListener('wheel', e => this.onWheel(e), { passive: false });
+        this.canvas.addEventListener('touchstart', e => this.onTouchStart(e), { passive: false });
+        this.canvas.addEventListener('touchmove', e => this.onTouchMove(e), { passive: false });
+        this.canvas.addEventListener('touchend', () => this.mouse.isDragging = false);
     }
 
-    // Mouse event handlers
     onMouseDown(e) {
         this.mouse.isDragging = true;
         this.mouse.lastX = e.clientX;
@@ -90,43 +80,26 @@ class Viewer3D {
     }
 
     onMouseMove(e) {
-        this.mouse.currentX = e.clientX;
-        this.mouse.currentY = e.clientY;
-
         if (this.mouse.isDragging) {
-            const deltaX = e.clientX - this.mouse.lastX;
-            const deltaY = e.clientY - this.mouse.lastY;
-
-            // Rotate camera
-            this.camera.rotationY += deltaX * 0.005;
-            this.camera.rotationX += deltaY * 0.005;
-
-            // Clamp rotation X to prevent flipping
-            this.camera.rotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.camera.rotationX));
-
+            const dx = e.clientX - this.mouse.lastX;
+            const dy = e.clientY - this.mouse.lastY;
+            this.camera.rotationY += dx * 0.005;
+            this.camera.rotationX = Math.max(-Math.PI / 2.2, Math.min(0.1, this.camera.rotationX + dy * 0.005));
             this.mouse.lastX = e.clientX;
             this.mouse.lastY = e.clientY;
-
             this.render();
         } else {
-            // Update hover state
             this.updateHover(e.offsetX, e.offsetY);
         }
     }
 
-    onMouseUp(e) {
-        this.mouse.isDragging = false;
-    }
-
     onWheel(e) {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? 1.1 : 0.9;
-        this.camera.distance *= delta;
-        this.camera.distance = Math.max(10, Math.min(100, this.camera.distance));
+        const factor = e.deltaY > 0 ? 1.08 : 0.92;
+        this.camera.distance = Math.max(10, Math.min(80, this.camera.distance * factor));
         this.render();
     }
 
-    // Touch event handlers
     onTouchStart(e) {
         if (e.touches.length === 1) {
             e.preventDefault();
@@ -139,542 +112,410 @@ class Viewer3D {
     onTouchMove(e) {
         if (e.touches.length === 1 && this.mouse.isDragging) {
             e.preventDefault();
-            const deltaX = e.touches[0].clientX - this.mouse.lastX;
-            const deltaY = e.touches[0].clientY - this.mouse.lastY;
-
-            this.camera.rotationY += deltaX * 0.005;
-            this.camera.rotationX += deltaY * 0.005;
-            this.camera.rotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.camera.rotationX));
-
+            const dx = e.touches[0].clientX - this.mouse.lastX;
+            const dy = e.touches[0].clientY - this.mouse.lastY;
+            this.camera.rotationY += dx * 0.005;
+            this.camera.rotationX = Math.max(-Math.PI / 2.2, Math.min(0.1, this.camera.rotationX + dy * 0.005));
             this.mouse.lastX = e.touches[0].clientX;
             this.mouse.lastY = e.touches[0].clientY;
-
             this.render();
         }
     }
 
-    onTouchEnd(e) {
-        this.mouse.isDragging = false;
-    }
-
-    // Load dataset
     async loadDataset(url) {
-        try {
-            const response = await fetch(url);
-            this.dataset = await response.json();
-            this.points = this.dataset.points.map(p => ({
-                x: p.x,
-                y: p.y,
-                z: p.z * this.verticalExaggeration,
-                originalZ: p.z,
-                elevation: p.elevation,
-                classification: p.classification
-            }));
-
-            // Generate triangulation for mesh mode
-            this.generateMesh();
-
-            // Update camera to center on dataset
-            const bounds = this.dataset.metadata.bounds;
-            this.camera.centerX = (bounds.x_min + bounds.x_max) / 2;
-            this.camera.centerY = (bounds.y_min + bounds.y_max) / 2;
-            this.camera.centerZ = (bounds.z_min + bounds.z_max) / 2 * this.verticalExaggeration;
-
-            this.render();
-            return this.dataset;
-        } catch (error) {
-            console.error('Failed to load dataset:', error);
-            throw error;
-        }
+        const response = await fetch(url);
+        this.dataset = await response.json();
+        this.processPoints();
+        this.computeStatistics();
+        this.fitBounds();
+        this.render();
+        return this.dataset;
     }
 
-    // Generate mesh triangulation (simple grid-based)
-    generateMesh() {
-        // Create a simple Delaunay-like triangulation
-        // For performance, we'll use a grid-based approach
-        this.triangles = [];
-
-        // Sort points by x, y for grid-based triangulation
-        const gridPoints = {};
-        const gridSize = 0.5; // 50cm grid
-
-        this.points.forEach((p, idx) => {
-            const gridX = Math.floor(p.x / gridSize);
-            const gridY = Math.floor(p.y / gridSize);
-            const key = `${gridX},${gridY}`;
-
-            if (!gridPoints[key]) {
-                gridPoints[key] = [];
-            }
-            gridPoints[key].push({ ...p, idx });
-        });
-
-        // Create triangles between adjacent grid cells
-        Object.keys(gridPoints).forEach(key => {
-            const [gx, gy] = key.split(',').map(Number);
-            const neighbors = [
-                `${gx + 1},${gy}`,
-                `${gx},${gy + 1}`,
-                `${gx + 1},${gy + 1}`
-            ];
-
-            const currentPoints = gridPoints[key];
-
-            neighbors.forEach(nKey => {
-                if (gridPoints[nKey]) {
-                    const neighborPoints = gridPoints[nKey];
-
-                    // Create triangles between points
-                    currentPoints.forEach(p1 => {
-                        neighborPoints.forEach(p2 => {
-                            // Find third point
-                            const third = currentPoints.find(p => p.idx !== p1.idx);
-                            if (third) {
-                                const dist = Math.sqrt(
-                                    Math.pow(p1.x - p2.x, 2) +
-                                    Math.pow(p1.y - p2.y, 2)
-                                );
-
-                                // Only create triangles for nearby points
-                                if (dist < gridSize * 2) {
-                                    this.triangles.push([p1, p2, third]);
-                                }
-                            }
-                        });
-                    });
-                }
-            });
-        });
+    processPoints() {
+        this.points = this.dataset.points.map(p => ({
+            x: p.x,
+            y: p.y,
+            z: p.z * this.verticalExaggeration,
+            originalZ: p.z,
+            elevation: p.elevation,
+            classification: p.classification
+        }));
+        this.colorCache.clear();
+        this.quantileRanks = null;
     }
 
-    // Update vertical exaggeration
+    computeStatistics() {
+        const zValues = this.points.map(p => p.originalZ);
+        const sorted = [...zValues].sort((a, b) => a - b);
+        const mean = zValues.reduce((s, v) => s + v, 0) / zValues.length;
+        const variance = zValues.reduce((s, v) => s + (v - mean) ** 2, 0) / zValues.length;
+        this.stats = {
+            mean,
+            stddev: Math.sqrt(variance),
+            sorted,
+            min: sorted[0],
+            max: sorted[sorted.length - 1]
+        };
+    }
+
     updateVerticalExaggeration(value) {
         this.verticalExaggeration = value;
-        this.points.forEach(p => {
-            p.z = p.originalZ * this.verticalExaggeration;
-        });
-        this.camera.centerZ = (this.dataset.metadata.bounds.z_min + this.dataset.metadata.bounds.z_max) / 2 * this.verticalExaggeration;
-        this.generateMesh();
+        this.points.forEach(p => p.z = p.originalZ * value);
+        const bounds = this.dataset.metadata.bounds;
+        this.camera.centerZ = ((bounds.z_min + bounds.z_max) / 2) * value;
         this.render();
     }
 
-    // 3D Projection
     project3D(x, y, z) {
-        // Translate to center
         let px = x - this.camera.centerX;
         let py = y - this.camera.centerY;
         let pz = z - this.camera.centerZ;
 
-        // Apply rotations (Z -> X -> Y order)
-        // Rotation around Z axis (roll)
-        let cosZ = Math.cos(this.camera.rotationZ);
-        let sinZ = Math.sin(this.camera.rotationZ);
-        let tx = px * cosZ - py * sinZ;
-        let ty = px * sinZ + py * cosZ;
-        px = tx;
-        py = ty;
+        const cosX = Math.cos(this.camera.rotationX);
+        const sinX = Math.sin(this.camera.rotationX);
+        const cosY = Math.cos(this.camera.rotationY);
+        const sinY = Math.sin(this.camera.rotationY);
 
-        // Rotation around X axis (pitch)
-        let cosX = Math.cos(this.camera.rotationX);
-        let sinX = Math.sin(this.camera.rotationX);
-        ty = py * cosX - pz * sinX;
+        let ty = py * cosX - pz * sinX;
         let tz = py * sinX + pz * cosX;
-        py = ty;
-        pz = tz;
+        py = ty; pz = tz;
 
-        // Rotation around Y axis (yaw)
-        let cosY = Math.cos(this.camera.rotationY);
-        let sinY = Math.sin(this.camera.rotationY);
-        tx = px * cosY + pz * sinY;
+        let tx = px * cosY + pz * sinY;
         tz = -px * sinY + pz * cosY;
-        px = tx;
-        pz = tz;
+        px = tx; pz = tz;
 
-        // Perspective projection
-        const scale = 500 / (this.camera.distance + pz);
-        const screenX = this.canvas.width / 2 + px * scale;
-        const screenY = this.canvas.height / 2 - py * scale;
-
-        return { x: screenX, y: screenY, z: pz, scale };
+        const scale = 600 / (this.camera.distance + pz);
+        return {
+            x: this.displayWidth / 2 + px * scale,
+            y: this.displayHeight / 2 - py * scale,
+            z: pz,
+            scale
+        };
     }
 
-    // Get color for elevation
     getElevationColor(z, classification) {
         if (!this.colorByElevation) {
-            // Default colors by classification
-            const classColors = {
-                'ground': '#8B7355',
-                'vegetation': '#228B22',
-                'rock': '#696969'
-            };
-            return classColors[classification] || '#888888';
+            const colors = { ground: '#8B7355', vegetation: '#228B22', rock: '#696969' };
+            return colors[classification] || '#888888';
         }
 
-        const bounds = this.dataset.metadata.bounds;
-        let normalizedZ;
+        const key = `${z.toFixed(3)}_${this.colormapType}`;
+        if (this.colorCache.has(key)) return this.colorCache.get(key);
 
-        // Apply colormap type
+        let t;
+        const { min, max, mean, stddev, sorted } = this.stats;
+
         switch (this.colormapType) {
-            case 'linear':
-                normalizedZ = (z - bounds.z_min) / (bounds.z_max - bounds.z_min);
-                break;
-
             case 'quantile':
-                // Quantile-based coloring
-                const sortedZ = this.points.map(p => p.originalZ).sort((a, b) => a - b);
-                const rank = sortedZ.findIndex(val => val >= z);
-                normalizedZ = rank / sortedZ.length;
+                const rank = this.binarySearch(sorted, z);
+                t = rank / sorted.length;
                 break;
-
             case 'zeroed':
-                // Center at mean elevation
-                const meanZ = this.points.reduce((sum, p) => sum + p.originalZ, 0) / this.points.length;
-                const range = Math.max(Math.abs(bounds.z_max - meanZ), Math.abs(bounds.z_min - meanZ));
-                normalizedZ = ((z - meanZ) / range + 1) / 2;
+                const range = Math.max(Math.abs(max - mean), Math.abs(min - mean));
+                t = range > 0 ? ((z - mean) / range + 1) / 2 : 0.5;
                 break;
-
             case 'stddev':
-                // Standard deviation anomalies
-                const mean = this.points.reduce((sum, p) => sum + p.originalZ, 0) / this.points.length;
-                const variance = this.points.reduce((sum, p) => sum + Math.pow(p.originalZ - mean, 2), 0) / this.points.length;
-                const stddev = Math.sqrt(variance);
-                const anomaly = (z - mean) / stddev;
-                normalizedZ = Math.max(0, Math.min(1, (anomaly + 3) / 6)); // Map -3σ to +3σ to 0-1
+                const anomaly = stddev > 0 ? (z - mean) / stddev : 0;
+                t = Math.max(0, Math.min(1, (anomaly + 3) / 6));
                 break;
-
             default:
-                normalizedZ = (z - bounds.z_min) / (bounds.z_max - bounds.z_min);
+                t = max > min ? (z - min) / (max - min) : 0.5;
         }
 
-        normalizedZ = Math.max(0, Math.min(1, normalizedZ));
+        t = Math.max(0, Math.min(1, t));
+        const color = this.terrainGradient(t);
+        this.colorCache.set(key, color);
+        return color;
+    }
 
-        // Color gradient: blue -> green -> yellow -> orange -> red
-        if (normalizedZ < 0.25) {
-            const t = normalizedZ / 0.25;
-            return this.rgbToHex(
-                Math.floor(33 + (76 - 33) * t),
-                Math.floor(150 + (175 - 150) * t),
-                Math.floor(243 + (80 - 243) * t)
-            );
-        } else if (normalizedZ < 0.5) {
-            const t = (normalizedZ - 0.25) / 0.25;
-            return this.rgbToHex(
-                Math.floor(76 + (255 - 76) * t),
-                Math.floor(175 + (235 - 175) * t),
-                Math.floor(80 + (59 - 80) * t)
-            );
-        } else if (normalizedZ < 0.75) {
-            const t = (normalizedZ - 0.5) / 0.25;
-            return this.rgbToHex(
-                Math.floor(255),
-                Math.floor(235 + (152 - 235) * t),
-                Math.floor(59 + (0 - 59) * t)
-            );
-        } else {
-            const t = (normalizedZ - 0.75) / 0.25;
-            return this.rgbToHex(
-                Math.floor(255 + (244 - 255) * t),
-                Math.floor(152 + (67 - 152) * t),
-                Math.floor(0 + (54 - 0) * t)
-            );
+    binarySearch(arr, val) {
+        let lo = 0, hi = arr.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (arr[mid] < val) lo = mid + 1;
+            else hi = mid;
         }
+        return lo;
     }
 
-    rgbToHex(r, g, b) {
-        return '#' + [r, g, b].map(x => {
-            const hex = x.toString(16);
-            return hex.length === 1 ? '0' + hex : hex;
-        }).join('');
+    terrainGradient(t) {
+        const stops = [
+            { t: 0, r: 33, g: 150, b: 243 },
+            { t: 0.25, r: 76, g: 175, b: 80 },
+            { t: 0.5, r: 255, g: 235, b: 59 },
+            { t: 0.75, r: 255, g: 152, b: 0 },
+            { t: 1, r: 244, g: 67, b: 54 }
+        ];
+
+        let i = 0;
+        while (i < stops.length - 1 && stops[i + 1].t < t) i++;
+        if (i >= stops.length - 1) i = stops.length - 2;
+
+        const s0 = stops[i], s1 = stops[i + 1];
+        const f = (t - s0.t) / (s1.t - s0.t);
+
+        const r = Math.round(s0.r + (s1.r - s0.r) * f);
+        const g = Math.round(s0.g + (s1.g - s0.g) * f);
+        const b = Math.round(s0.b + (s1.b - s0.b) * f);
+
+        return `rgb(${r},${g},${b})`;
     }
 
-    // Render scene
     render() {
         if (!this.dataset) return;
 
-        // Clear canvas
-        this.ctx.fillStyle = getComputedStyle(document.documentElement)
-            .getPropertyValue('--canvas-bg').trim();
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        const ctx = this.ctx;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const dpr = window.devicePixelRatio || 1;
+        ctx.scale(dpr, dpr);
 
-        // Draw context underlay if enabled
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim();
+        ctx.fillRect(0, 0, this.displayWidth, this.displayHeight);
+
         if (this.contextLayer === 'underlay' && (this.showBasemap || this.showTopography)) {
             this.renderContextLayer();
         }
 
-        // Project all points
-        const projectedPoints = this.points.map(p => ({
+        this.projectedPoints = this.points.map(p => ({
             ...p,
-            projected: this.project3D(p.x, p.y, p.z)
+            proj: this.project3D(p.x, p.y, p.z)
         }));
+        this.projectedPoints.sort((a, b) => b.proj.z - a.proj.z);
 
-        // Sort by depth (painter's algorithm)
-        projectedPoints.sort((a, b) => b.projected.z - a.projected.z);
-
-        // Render based on view mode
         switch (this.viewMode) {
-            case 'points':
-                this.renderPoints(projectedPoints);
-                break;
-            case 'mesh':
-                this.renderMesh(projectedPoints);
-                break;
-            case 'heightmap':
-                this.renderHeightmap(projectedPoints);
-                break;
+            case 'points': this.renderPoints(); break;
+            case 'mesh': this.renderMesh(); break;
+            case 'heightmap': this.renderHeightmap(); break;
         }
 
-        // Draw context overlay if enabled
         if (this.contextLayer === 'overlay' && (this.showBasemap || this.showTopography)) {
             this.renderContextLayer();
         }
 
-        // Draw grid if enabled
-        if (this.showGrid) {
-            this.renderGrid();
+        if (this.showGrid) this.renderGrid();
+    }
+
+    renderPoints() {
+        const ctx = this.ctx;
+        for (const p of this.projectedPoints) {
+            const { x, y, scale } = p.proj;
+            if (x < -10 || x > this.displayWidth + 10 || y < -10 || y > this.displayHeight + 10) continue;
+
+            ctx.fillStyle = this.getElevationColor(p.originalZ, p.classification);
+            ctx.beginPath();
+            ctx.arc(x, y, Math.max(1.5, scale * 1.8), 0, Math.PI * 2);
+            ctx.fill();
         }
     }
 
-    renderPoints(projectedPoints) {
-        projectedPoints.forEach(p => {
-            const proj = p.projected;
-            if (proj.x < 0 || proj.x > this.canvas.width || proj.y < 0 || proj.y > this.canvas.height) {
-                return;
-            }
-
-            const color = this.getElevationColor(p.originalZ, p.classification);
-            const size = Math.max(1, proj.scale * 2);
-
-            this.ctx.fillStyle = color;
-            this.ctx.beginPath();
-            this.ctx.arc(proj.x, proj.y, size, 0, Math.PI * 2);
-            this.ctx.fill();
-        });
-    }
-
-    renderMesh(projectedPoints) {
-        // Create point lookup
-        const pointLookup = new Map();
-        projectedPoints.forEach((p, idx) => {
-            pointLookup.set(p, p.projected);
-        });
-
-        // Render triangles
-        this.triangles.forEach(triangle => {
-            const p1 = pointLookup.get(triangle[0]);
-            const p2 = pointLookup.get(triangle[1]);
-            const p3 = pointLookup.get(triangle[2]);
-
-            if (!p1 || !p2 || !p3) return;
-
-            // Calculate average z for coloring
-            const avgZ = (triangle[0].originalZ + triangle[1].originalZ + triangle[2].originalZ) / 3;
-            const color = this.getElevationColor(avgZ, triangle[0].classification);
-
-            this.ctx.fillStyle = color;
-            this.ctx.strokeStyle = color;
-            this.ctx.lineWidth = 0.5;
-
-            this.ctx.beginPath();
-            this.ctx.moveTo(p1.x, p1.y);
-            this.ctx.lineTo(p2.x, p2.y);
-            this.ctx.lineTo(p3.x, p3.y);
-            this.ctx.closePath();
-            this.ctx.fill();
-            this.ctx.stroke();
-        });
-    }
-
-    renderHeightmap(projectedPoints) {
-        // Create a grid-based heightmap
-        const gridSize = 30;
+    renderMesh() {
+        const ctx = this.ctx;
+        const gridSize = 40;
         const grid = Array(gridSize).fill(null).map(() => Array(gridSize).fill(null));
 
-        // Populate grid with points
-        projectedPoints.forEach(p => {
-            const gx = Math.floor((p.x / 15) * gridSize);
-            const gy = Math.floor((p.y / 15) * gridSize);
-
+        for (const p of this.projectedPoints) {
+            const gx = Math.floor((p.x / 15) * (gridSize - 1));
+            const gy = Math.floor((p.y / 15) * (gridSize - 1));
             if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
-                if (!grid[gx][gy] || grid[gx][gy].originalZ < p.originalZ) {
+                if (!grid[gx][gy] || p.originalZ > grid[gx][gy].originalZ) {
                     grid[gx][gy] = p;
                 }
             }
-        });
+        }
 
-        // Render grid cells
-        for (let x = 0; x < gridSize - 1; x++) {
-            for (let y = 0; y < gridSize - 1; y++) {
-                const p1 = grid[x][y];
-                const p2 = grid[x + 1][y];
-                const p3 = grid[x][y + 1];
-                const p4 = grid[x + 1][y + 1];
+        const quads = [];
+        for (let i = 0; i < gridSize - 1; i++) {
+            for (let j = 0; j < gridSize - 1; j++) {
+                const p00 = grid[i][j], p10 = grid[i + 1][j];
+                const p01 = grid[i][j + 1], p11 = grid[i + 1][j + 1];
+                if (p00 && p10 && p01 && p11) {
+                    const avgZ = (p00.proj.z + p10.proj.z + p01.proj.z + p11.proj.z) / 4;
+                    const avgElev = (p00.originalZ + p10.originalZ + p01.originalZ + p11.originalZ) / 4;
+                    quads.push({ p00, p10, p01, p11, avgZ, avgElev });
+                }
+            }
+        }
 
-                if (p1 && p2 && p3 && p4) {
-                    const avgZ = (p1.originalZ + p2.originalZ + p3.originalZ + p4.originalZ) / 4;
-                    const color = this.getElevationColor(avgZ, 'ground');
+        quads.sort((a, b) => b.avgZ - a.avgZ);
 
-                    const proj1 = this.project3D(p1.x, p1.y, p1.z);
-                    const proj2 = this.project3D(p2.x, p2.y, p2.z);
-                    const proj3 = this.project3D(p3.x, p3.y, p3.z);
-                    const proj4 = this.project3D(p4.x, p4.y, p4.z);
+        for (const q of quads) {
+            ctx.fillStyle = this.getElevationColor(q.avgElev, 'ground');
+            ctx.strokeStyle = this.getElevationColor(q.avgElev, 'ground');
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(q.p00.proj.x, q.p00.proj.y);
+            ctx.lineTo(q.p10.proj.x, q.p10.proj.y);
+            ctx.lineTo(q.p11.proj.x, q.p11.proj.y);
+            ctx.lineTo(q.p01.proj.x, q.p01.proj.y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }
+    }
 
-                    this.ctx.fillStyle = color;
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(proj1.x, proj1.y);
-                    this.ctx.lineTo(proj2.x, proj2.y);
-                    this.ctx.lineTo(proj4.x, proj4.y);
-                    this.ctx.lineTo(proj3.x, proj3.y);
-                    this.ctx.closePath();
-                    this.ctx.fill();
+    renderHeightmap() {
+        const ctx = this.ctx;
+        const gridSize = 50;
+        const grid = Array(gridSize).fill(null).map(() => Array(gridSize).fill(null));
+
+        for (const p of this.points) {
+            const gx = Math.floor((p.x / 15) * (gridSize - 1));
+            const gy = Math.floor((p.y / 15) * (gridSize - 1));
+            if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
+                if (!grid[gx][gy] || p.originalZ > grid[gx][gy].originalZ) {
+                    grid[gx][gy] = p;
+                }
+            }
+        }
+
+        for (let i = 0; i < gridSize - 1; i++) {
+            for (let j = 0; j < gridSize - 1; j++) {
+                const p00 = grid[i][j], p10 = grid[i + 1][j];
+                const p01 = grid[i][j + 1], p11 = grid[i + 1][j + 1];
+                if (p00 && p10 && p01 && p11) {
+                    const proj00 = this.project3D(p00.x, p00.y, p00.z);
+                    const proj10 = this.project3D(p10.x, p10.y, p10.z);
+                    const proj01 = this.project3D(p01.x, p01.y, p01.z);
+                    const proj11 = this.project3D(p11.x, p11.y, p11.z);
+
+                    const avgElev = (p00.originalZ + p10.originalZ + p01.originalZ + p11.originalZ) / 4;
+                    ctx.fillStyle = this.getElevationColor(avgElev, 'ground');
+                    ctx.beginPath();
+                    ctx.moveTo(proj00.x, proj00.y);
+                    ctx.lineTo(proj10.x, proj10.y);
+                    ctx.lineTo(proj11.x, proj11.y);
+                    ctx.lineTo(proj01.x, proj01.y);
+                    ctx.closePath();
+                    ctx.fill();
                 }
             }
         }
     }
 
     renderGrid() {
-        const gridSize = 1; // 1 meter grid
+        const ctx = this.ctx;
         const bounds = this.dataset.metadata.bounds;
-        const textColor = getComputedStyle(document.documentElement)
-            .getPropertyValue('--text-secondary').trim();
+        const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
 
-        this.ctx.strokeStyle = textColor;
-        this.ctx.lineWidth = 1;
-        this.ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = textColor;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.25;
 
-        // Draw grid lines
-        for (let x = bounds.x_min; x <= bounds.x_max; x += gridSize) {
+        for (let x = bounds.x_min; x <= bounds.x_max; x += 1) {
             const p1 = this.project3D(x, bounds.y_min, 0);
             const p2 = this.project3D(x, bounds.y_max, 0);
-
-            this.ctx.beginPath();
-            this.ctx.moveTo(p1.x, p1.y);
-            this.ctx.lineTo(p2.x, p2.y);
-            this.ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
         }
 
-        for (let y = bounds.y_min; y <= bounds.y_max; y += gridSize) {
+        for (let y = bounds.y_min; y <= bounds.y_max; y += 1) {
             const p1 = this.project3D(bounds.x_min, y, 0);
             const p2 = this.project3D(bounds.x_max, y, 0);
-
-            this.ctx.beginPath();
-            this.ctx.moveTo(p1.x, p1.y);
-            this.ctx.lineTo(p2.x, p2.y);
-            this.ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
         }
 
-        this.ctx.globalAlpha = 1.0;
-
-        // Draw scale labels
-        this.ctx.fillStyle = textColor;
-        this.ctx.font = '10px sans-serif';
-        const labelProj = this.project3D(bounds.x_max, bounds.y_min, 0);
-        this.ctx.fillText('15m', labelProj.x + 10, labelProj.y);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = textColor;
+        ctx.font = '11px -apple-system, sans-serif';
+        const labelPos = this.project3D(bounds.x_max + 0.5, bounds.y_min, 0);
+        ctx.fillText('15m × 15m', labelPos.x, labelPos.y);
     }
 
     renderContextLayer() {
-        // Placeholder for basemap/topography rendering
-        // In a real implementation, this would load and render tile imagery
-        this.ctx.globalAlpha = this.contextOpacity;
+        const ctx = this.ctx;
+        const bounds = this.dataset.metadata.bounds;
+        ctx.globalAlpha = this.contextOpacity;
 
         if (this.showBasemap) {
-            // Draw a simple basemap placeholder
-            const bounds = this.dataset.metadata.bounds;
             const corners = [
                 this.project3D(bounds.x_min, bounds.y_min, 0),
                 this.project3D(bounds.x_max, bounds.y_min, 0),
                 this.project3D(bounds.x_max, bounds.y_max, 0),
                 this.project3D(bounds.x_min, bounds.y_max, 0)
             ];
+            ctx.fillStyle = '#E8E4D8';
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y);
+            corners.forEach(c => ctx.lineTo(c.x, c.y));
+            ctx.closePath();
+            ctx.fill();
 
-            this.ctx.fillStyle = '#E8E4D8';
-            this.ctx.beginPath();
-            this.ctx.moveTo(corners[0].x, corners[0].y);
-            corners.forEach(c => this.ctx.lineTo(c.x, c.y));
-            this.ctx.closePath();
-            this.ctx.fill();
-
-            // Add some "street" lines to simulate basemap
-            this.ctx.strokeStyle = '#D0CCC0';
-            this.ctx.lineWidth = 2;
-            const mid1 = this.project3D(7.5, bounds.y_min, 0);
-            const mid2 = this.project3D(7.5, bounds.y_max, 0);
-            this.ctx.beginPath();
-            this.ctx.moveTo(mid1.x, mid1.y);
-            this.ctx.lineTo(mid2.x, mid2.y);
-            this.ctx.stroke();
+            ctx.strokeStyle = '#C5C0B0';
+            ctx.lineWidth = 1;
+            const mid1 = this.project3D(7.5, 0, 0);
+            const mid2 = this.project3D(7.5, 15, 0);
+            ctx.beginPath();
+            ctx.moveTo(mid1.x, mid1.y);
+            ctx.lineTo(mid2.x, mid2.y);
+            ctx.stroke();
         }
 
         if (this.showTopography) {
-            // Draw contour lines as simple topography
-            const bounds = this.dataset.metadata.bounds;
-            this.ctx.strokeStyle = '#8B7355';
-            this.ctx.lineWidth = 1;
-
-            for (let z = bounds.z_min; z <= bounds.z_max; z += 0.5) {
-                // Draw simple contour circles
-                const centerProj = this.project3D(
-                    this.camera.centerX,
-                    this.camera.centerY,
-                    z * this.verticalExaggeration
-                );
-                this.ctx.beginPath();
-                this.ctx.arc(centerProj.x, centerProj.y, 50 + z * 20, 0, Math.PI * 2);
-                this.ctx.stroke();
+            ctx.strokeStyle = '#8B7355';
+            ctx.lineWidth = 1;
+            for (let z = 0.5; z <= 3.5; z += 0.5) {
+                const contourPoints = this.points.filter(p => Math.abs(p.originalZ - z) < 0.1);
+                if (contourPoints.length > 10) {
+                    ctx.beginPath();
+                    let started = false;
+                    for (const cp of contourPoints) {
+                        const proj = this.project3D(cp.x, cp.y, 0);
+                        if (!started) { ctx.moveTo(proj.x, proj.y); started = true; }
+                        else ctx.lineTo(proj.x, proj.y);
+                    }
+                    ctx.stroke();
+                }
             }
         }
 
-        this.ctx.globalAlpha = 1.0;
+        ctx.globalAlpha = 1;
     }
 
-    // Hover detection
-    updateHover(mouseX, mouseY) {
-        if (!this.dataset) return;
+    updateHover(mx, my) {
+        if (!this.projectedPoints.length) return;
 
-        let closestPoint = null;
-        let closestDist = Infinity;
+        let closest = null;
+        let minDist = 15;
 
-        this.points.forEach(p => {
-            const proj = this.project3D(p.x, p.y, p.z);
-            const dist = Math.sqrt(
-                Math.pow(proj.x - mouseX, 2) +
-                Math.pow(proj.y - mouseY, 2)
-            );
-
-            if (dist < 10 && dist < closestDist) {
-                closestDist = dist;
-                closestPoint = p;
+        for (const p of this.projectedPoints) {
+            const dx = p.proj.x - mx;
+            const dy = p.proj.y - my;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < minDist) {
+                minDist = dist;
+                closest = p;
             }
-        });
+        }
 
-        if (closestPoint !== this.hoveredPoint) {
-            this.hoveredPoint = closestPoint;
-            this.onHoverChange(closestPoint);
+        if (closest !== this.hoveredPoint) {
+            this.hoveredPoint = closest;
+            if (this.onHoverChange) this.onHoverChange(closest);
         }
     }
 
-    onHoverChange(point) {
-        // Override this method to handle hover changes
-    }
-
-    // View controls
     resetView() {
-        this.camera.distance = 25;
-        this.camera.rotationX = -0.6;
-        this.camera.rotationY = 0;
-        this.camera.rotationZ = 0.3;
+        this.camera.distance = 30;
+        this.camera.rotationX = -0.5;
+        this.camera.rotationY = 0.3;
+        this.camera.rotationZ = 0;
         this.render();
     }
 
     fitBounds() {
+        if (!this.dataset) return;
         const bounds = this.dataset.metadata.bounds;
-        const sizeX = bounds.x_max - bounds.x_min;
-        const sizeY = bounds.y_max - bounds.y_min;
-        const maxSize = Math.max(sizeX, sizeY);
-
-        this.camera.distance = maxSize * 1.5;
+        this.camera.centerX = (bounds.x_min + bounds.x_max) / 2;
+        this.camera.centerY = (bounds.y_min + bounds.y_max) / 2;
+        this.camera.centerZ = ((bounds.z_min + bounds.z_max) / 2) * this.verticalExaggeration;
+        this.camera.distance = Math.max(bounds.x_max - bounds.x_min, bounds.y_max - bounds.y_min) * 1.8;
         this.render();
     }
 }
 
-// Export for use in app.js
 window.Viewer3D = Viewer3D;

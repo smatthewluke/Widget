@@ -2,108 +2,80 @@
 
 class PhotogrammetryApp {
     constructor() {
-        // UI Elements
         this.canvas = document.getElementById('viewer-canvas');
         this.themeToggle = document.getElementById('theme-toggle');
         this.datasetSelect = document.getElementById('dataset-select');
         this.pointReadout = document.getElementById('point-readout');
         this.readoutContent = document.getElementById('readout-content');
 
-        // Initialize viewer
+        this.datasets = {
+            'rolling-hill-melbourne': 'data/rolling-hill-melbourne.json'
+        };
+
         this.viewer = new Viewer3D(this.canvas);
         this.viewer.onHoverChange = (point) => this.handleHover(point);
 
-        // Bind UI controls
         this.initTheme();
         this.initTabs();
-        this.initViewControls();
+        this.initViewModeControls();
         this.initDisplayControls();
         this.initColormapControls();
         this.initSliders();
         this.initContextControls();
-        this.initViewModeControls();
+        this.initViewControls();
+        this.initDatasetControls();
 
-        // Load initial dataset
         this.loadDataset('rolling-hill-melbourne');
     }
 
-    // Theme management
     initTheme() {
         const savedTheme = localStorage.getItem('theme') || 'light';
         this.setTheme(savedTheme);
-
         this.themeToggle.addEventListener('click', () => {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            this.setTheme(newTheme);
+            const current = document.documentElement.getAttribute('data-theme');
+            this.setTheme(current === 'dark' ? 'light' : 'dark');
         });
     }
 
     setTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
-
         const icon = this.themeToggle.querySelector('.theme-icon');
-        if (icon) {
-            icon.textContent = theme === 'dark' ? '☀️' : '🌙';
-        }
-
-        // Re-render viewer to update colors
-        if (this.viewer) {
-            this.viewer.render();
-        }
+        if (icon) icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+        if (this.viewer) this.viewer.render();
     }
 
-    // Tab navigation
     initTabs() {
         const tabBtns = document.querySelectorAll('.tab-btn');
         const tabPanes = document.querySelectorAll('.tab-pane');
 
         tabBtns.forEach(btn => {
             btn.addEventListener('click', () => {
-                const targetTab = btn.dataset.tab;
-
-                // Update button states
+                const target = btn.dataset.tab;
                 tabBtns.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-
-                // Update pane visibility
                 tabPanes.forEach(pane => {
-                    if (pane.id === `${targetTab}-tab`) {
-                        pane.classList.add('active');
-                    } else {
-                        pane.classList.remove('active');
-                    }
+                    pane.classList.toggle('active', pane.id === `${target}-tab`);
                 });
-
-                // Re-render viewer if switching to explorer tab
-                if (targetTab === 'explorer') {
-                    setTimeout(() => this.viewer.render(), 100);
+                if (target === 'explorer') {
+                    setTimeout(() => this.viewer.render(), 50);
                 }
             });
         });
     }
 
-    // View mode controls
     initViewModeControls() {
-        const viewModeBtns = document.querySelectorAll('[data-mode]');
-
-        viewModeBtns.forEach(btn => {
+        const btns = document.querySelectorAll('[data-mode]');
+        btns.forEach(btn => {
             btn.addEventListener('click', () => {
-                const mode = btn.dataset.mode;
-
-                // Update button states
-                viewModeBtns.forEach(b => b.classList.remove('active'));
+                btns.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-
-                // Update viewer
-                this.viewer.viewMode = mode;
+                this.viewer.viewMode = btn.dataset.mode;
                 this.viewer.render();
             });
         });
     }
 
-    // Display controls
     initDisplayControls() {
         const showGrid = document.getElementById('show-grid');
         const colorByElevation = document.getElementById('color-by-elevation');
@@ -115,30 +87,24 @@ class PhotogrammetryApp {
 
         colorByElevation.addEventListener('change', (e) => {
             this.viewer.colorByElevation = e.target.checked;
+            this.viewer.colorCache.clear();
             this.viewer.render();
         });
     }
 
-    // Colormap controls
     initColormapControls() {
-        const colormapBtns = document.querySelectorAll('[data-colormap]');
-
-        colormapBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const colormap = btn.dataset.colormap;
-
-                // Update button states
-                colormapBtns.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-
-                // Update viewer
-                this.viewer.colormapType = colormap;
-                this.viewer.render();
+        const radios = document.querySelectorAll('input[name="colormap"]');
+        radios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.viewer.colormapType = e.target.value;
+                    this.viewer.colorCache.clear();
+                    this.viewer.render();
+                }
             });
         });
     }
 
-    // Sliders
     initSliders() {
         const verticalExag = document.getElementById('vertical-exaggeration');
         const verticalExagValue = document.getElementById('vertical-exag-value');
@@ -160,7 +126,6 @@ class PhotogrammetryApp {
         });
     }
 
-    // Context layer controls
     initContextControls() {
         const showBasemap = document.getElementById('show-basemap');
         const showTopography = document.getElementById('show-topography');
@@ -179,69 +144,68 @@ class PhotogrammetryApp {
 
         layerBtns.forEach(btn => {
             btn.addEventListener('click', () => {
-                const layer = btn.dataset.layer;
-
-                // Update button states
                 layerBtns.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-
-                // Update viewer
-                this.viewer.contextLayer = layer;
+                this.viewer.contextLayer = btn.dataset.layer;
                 this.viewer.render();
             });
         });
 
         showFullMetadata.addEventListener('change', (e) => {
             this.viewer.showFullMetadata = e.target.checked;
+            if (this.viewer.hoveredPoint) {
+                this.handleHover(this.viewer.hoveredPoint);
+            }
         });
     }
 
-    // View controls
     initViewControls() {
-        const resetView = document.getElementById('reset-view');
-        const fitBounds = document.getElementById('fit-bounds');
-
-        resetView.addEventListener('click', () => {
+        document.getElementById('reset-view').addEventListener('click', () => {
             this.viewer.resetView();
         });
 
-        fitBounds.addEventListener('click', () => {
+        document.getElementById('fit-bounds').addEventListener('click', () => {
             this.viewer.fitBounds();
         });
     }
 
-    // Dataset loading
+    initDatasetControls() {
+        this.datasetSelect.addEventListener('change', (e) => {
+            this.loadDataset(e.target.value);
+        });
+    }
+
     async loadDataset(datasetId) {
+        const url = this.datasets[datasetId];
+        if (!url) return;
+
         try {
-            const dataset = await this.viewer.loadDataset(`data/${datasetId}.json`);
+            const dataset = await this.viewer.loadDataset(url);
             this.updateLegend(dataset);
             this.updateColorScale(dataset);
         } catch (error) {
             console.error('Failed to load dataset:', error);
-            alert('Failed to load dataset. Please check the console for details.');
         }
     }
 
-    // Update legend with dataset info
     updateLegend(dataset) {
         const meta = dataset.metadata;
         const bounds = meta.bounds;
 
-        document.getElementById('area-value').textContent = `15m × 15m`;
+        document.getElementById('area-value').textContent = '15m × 15m';
         document.getElementById('points-value').textContent = meta.processing.point_count_decimated.toLocaleString();
-        document.getElementById('elevation-value').textContent = `${bounds.z_min}m to ${bounds.z_max.toFixed(1)}m`;
+        document.getElementById('elevation-value').textContent =
+            `${bounds.z_min.toFixed(1)}m – ${bounds.z_max.toFixed(1)}m`;
         document.getElementById('coord-value').textContent = meta.coordinate_system.type;
         document.getElementById('units-value').textContent = meta.coordinate_system.units;
     }
 
-    // Update color scale
     updateColorScale(dataset) {
         const bounds = dataset.metadata.bounds;
-        document.getElementById('scale-min').textContent = `${bounds.z_min}m`;
+        document.getElementById('scale-min').textContent = `${bounds.z_min.toFixed(1)}m`;
         document.getElementById('scale-max').textContent = `${bounds.z_max.toFixed(1)}m`;
     }
 
-    // Handle point hover
     handleHover(point) {
         if (!point) {
             this.pointReadout.classList.add('hidden');
@@ -251,31 +215,18 @@ class PhotogrammetryApp {
         this.pointReadout.classList.remove('hidden');
 
         let content = `
-            <div class="readout-item">
-                <span class="readout-label">X:</span> ${point.x.toFixed(2)}m
-            </div>
-            <div class="readout-item">
-                <span class="readout-label">Y:</span> ${point.y.toFixed(2)}m
-            </div>
-            <div class="readout-item">
-                <span class="readout-label">Z:</span> ${point.originalZ.toFixed(2)}m
-            </div>
-            <div class="readout-item">
-                <span class="readout-label">Elevation:</span> ${point.elevation.toFixed(2)}m
-            </div>
+            <div class="readout-item"><span class="readout-label">X:</span> ${point.x.toFixed(3)}m</div>
+            <div class="readout-item"><span class="readout-label">Y:</span> ${point.y.toFixed(3)}m</div>
+            <div class="readout-item"><span class="readout-label">Z:</span> ${point.originalZ.toFixed(3)}m</div>
+            <div class="readout-item"><span class="readout-label">Elevation:</span> ${point.elevation.toFixed(3)}m</div>
         `;
 
         if (this.viewer.showFullMetadata) {
             content += `
-                <div class="readout-item">
-                    <span class="readout-label">Classification:</span> ${point.classification}
-                </div>
-                <div class="readout-item">
-                    <span class="readout-label">Dataset:</span> Rolling Hill - Melbourne
-                </div>
-                <div class="readout-item">
-                    <span class="readout-label">Coord System:</span> Local
-                </div>
+                <div class="readout-item"><span class="readout-label">Classification:</span> ${point.classification}</div>
+                <div class="readout-item"><span class="readout-label">Dataset:</span> Rolling Hill Melbourne</div>
+                <div class="readout-item"><span class="readout-label">Coord System:</span> Local</div>
+                <div class="readout-item"><span class="readout-label">Units:</span> meters</div>
             `;
         }
 
@@ -283,7 +234,6 @@ class PhotogrammetryApp {
     }
 }
 
-// Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new PhotogrammetryApp();
 });
